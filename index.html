@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>3D Ip Parkuru</title>
+  <style>
+    :root { color-scheme: dark; --ink:#f7fbff; --muted:#a9b7c8; --panel:rgba(8,13,22,.72); --line:rgba(255,255,255,.15); }
+    * { box-sizing: border-box; }
+    html, body { width:100%; height:100%; margin:0; overflow:hidden; background:#07101d; color:var(--ink); font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    canvas { width:100vw; height:100vh; display:block; background:#07101d; cursor:grab; touch-action:none; }
+    canvas:active { cursor:grabbing; }
+    .hud { position:fixed; inset:14px 14px auto 14px; display:flex; justify-content:space-between; gap:12px; pointer-events:none; }
+    .panel { pointer-events:auto; max-width:min(640px, calc(100vw - 28px)); padding:12px 14px; border:1px solid var(--line); border-radius:8px; background:var(--panel); box-shadow:0 12px 38px rgba(0,0,0,.3); backdrop-filter:blur(14px); }
+    h1 { margin:0 0 8px; display:flex; align-items:center; gap:10px; font-size:18px; line-height:1; letter-spacing:0; }
+    .cube { width:13px; height:13px; transform:rotate(45deg); background:linear-gradient(135deg,#5bbcff,#ff5f95); box-shadow:0 0 18px rgba(91,188,255,.8); }
+    .help { display:grid; gap:5px; color:var(--muted); font-size:13px; line-height:1.32; }
+    kbd { min-width:24px; padding:3px 7px; margin:0 2px; border:1px solid rgba(255,255,255,.22); border-bottom-color:rgba(255,255,255,.42); border-radius:5px; background:rgba(255,255,255,.1); color:var(--ink); font:700 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .score { min-width:175px; text-align:right; font-variant-numeric:tabular-nums; }
+    .big { margin:0; font-size:20px; font-weight:850; line-height:1.05; }
+    .small { margin:6px 0 0; color:var(--muted); font-size:12px; line-height:1.3; }
+    .toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); max-width:min(580px, calc(100vw - 32px)); padding:11px 14px; border:1px solid rgba(255,211,112,.42); border-radius:8px; background:rgba(13,18,27,.88); color:#fff0c4; font-size:14px; text-align:center; opacity:0; transition:opacity .18s ease; pointer-events:none; }
+    .toast.show { opacity:1; }
+    .menu { position:fixed; inset:0; display:grid; place-items:center; padding:18px; background:linear-gradient(180deg, rgba(7,16,29,.68), rgba(7,16,29,.9)); backdrop-filter:blur(8px); z-index:5; }
+    .menu.hidden { display:none; }
+    .menu-card { width:min(520px, 100%); padding:18px; border:1px solid var(--line); border-radius:8px; background:rgba(8,13,22,.9); box-shadow:0 22px 70px rgba(0,0,0,.44); }
+    .menu-title { margin:0 0 4px; font-size:34px; line-height:1; font-weight:900; letter-spacing:0; }
+    .menu-subtitle { margin:0 0 16px; color:var(--muted); font-size:14px; line-height:1.35; }
+    .menu-actions, .menu-page, .friend-tabs { display:grid; gap:10px; }
+    .menu-page { margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
+    .menu-page.hidden { display:none; }
+    button, input { font:inherit; }
+    .menu button { min-height:42px; border:1px solid rgba(255,255,255,.18); border-radius:7px; background:rgba(255,255,255,.08); color:var(--ink); font-weight:800; cursor:pointer; }
+    .menu button:hover { background:rgba(91,188,255,.16); border-color:rgba(91,188,255,.46); }
+    .primary { background:linear-gradient(135deg, #2c93db, #ff4f8e) !important; border-color:transparent !important; }
+    .row { display:flex; gap:10px; align-items:center; justify-content:space-between; color:var(--muted); font-size:14px; }
+    .code-box { display:flex; align-items:center; justify-content:center; min-height:76px; border:1px dashed rgba(255,255,255,.24); border-radius:8px; background:rgba(255,255,255,.06); font:900 38px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing:5px; }
+    .code-form { display:flex; gap:8px; }
+    .code-form input { width:100%; min-height:42px; border:1px solid rgba(255,255,255,.18); border-radius:7px; background:rgba(255,255,255,.08); color:var(--ink); padding:0 12px; font:800 18px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing:3px; }
+    .friend-list { display:grid; gap:6px; margin:0; padding:0; list-style:none; color:var(--muted); font-size:14px; }
+    .friend-list li { display:flex; justify-content:space-between; padding:8px 10px; border:1px solid rgba(255,255,255,.1); border-radius:7px; background:rgba(255,255,255,.05); }
+    .note { margin:0; color:var(--muted); font-size:12px; line-height:1.35; }
+    @media (max-width:760px) { .hud { flex-direction:column; inset:10px 10px auto 10px; } .score { min-width:0; text-align:left; } h1 { font-size:16px; } .panel { padding:10px 12px; } }
+  </style>
+</head>
+<body>
+  <canvas id="game" tabindex="0" aria-label="3D Ip Parkuru"></canvas>
+  <div class="menu" id="menu">
+    <section class="menu-card">
+      <h2 class="menu-title">3D Ip Parkuru</h2>
+      <p class="menu-subtitle">Kanyonda, altinda deniz olan ipli parkur. Iki karakter birlikte ilerler.</p>
+      <div class="menu-actions" id="mainMenu">
+        <button class="primary" id="startBtn">Oyuna Basla</button>
+        <button id="settingsBtn">Ayarlar</button>
+        <button id="friendsBtn">Arkadaslar</button>
+      </div>
+
+      <div class="menu-page hidden" id="settingsPage">
+        <div class="row">
+          <span>Pembe otomatik takip</span>
+          <button id="assistBtn">Acik</button>
+        </div>
+        <div class="row">
+          <span>Kamera uzakligi</span>
+          <button id="distanceBtn">Normal</button>
+        </div>
+        <button id="settingsBackBtn">Geri</button>
+      </div>
+
+      <div class="menu-page hidden" id="friendsPage">
+        <div class="friend-tabs">
+          <button id="myCodeBtn">Lobi Kodum</button>
+          <button id="writeCodeBtn">Lobiye Katil</button>
+        </div>
+        <div class="menu-page" id="myCodePage">
+          <p class="note">Arkadasin bu kodu yazarsa senin lobine katilmak ister. Gercek baglanti icin online sunucu gerekir:</p>
+          <div class="code-box" id="myCode">00000</div>
+        </div>
+        <div class="menu-page hidden" id="writeCodePage">
+          <form class="code-form" id="codeForm">
+            <input id="friendCodeInput" inputmode="numeric" maxlength="5" autocomplete="off" placeholder="12345">
+            <button type="submit">Katil</button>
+          </form>
+          <ul class="friend-list" id="friendList"></ul>
+          <p class="note">Bu tek dosyalik surumde lobi kodu ekrani hazir. Baska bilgisayardan gercek eslesme icin oyunu bir online sunucuya baglamak gerekir.</p>
+        </div>
+        <button id="friendsBackBtn">Geri</button>
+      </div>
+    </section>
+  </div>
+  <div class="hud">
+    <section class="panel">
+      <h1><span class="cube"></span>3D Ip Parkuru</h1>
+      <div class="help">
+        <div>Mavi: <kbd>A</kbd><kbd>D</kbd> sağ-sol, <kbd>W</kbd><kbd>S</kbd> ileri-geri, <kbd>Space</kbd> zıpla. Hareket parkur yönüne göredir.</div>
+        <div>Pembe otomatik takip eder. İkinci oyuncu isterse <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> ve <kbd>Enter</kbd> ile devralır. <kbd>T</kbd> takip modu, <kbd>R</kbd> yeniden başlat.</div>
+        <div>Renkli yollar sadece kendi karakterini taşır. Pembe lever mavi köprüyü, mavi lever pembe köprüyü açar.</div>
+        <div>Kamerayı döndürmek için fareyle sürükle, tekerlekle yakınlaş.</div>
+      </div>
+    </section>
+    <section class="panel score">
+      <p class="big" id="status">Checkpoint 0/3</p>
+      <p class="small" id="timer">00:00.0</p>
+    </section>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script type="application/json" id="debugData">{}</script>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const gl = canvas.getContext("webgl", { antialias: true, alpha: false });
+    const statusEl = document.getElementById("status");
+    const timerEl = document.getElementById("timer");
+    const toastEl = document.getElementById("toast");
+    const menuEl = document.getElementById("menu");
+    const mainMenuEl = document.getElementById("mainMenu");
+    const settingsPageEl = document.getElementById("settingsPage");
+    const friendsPageEl = document.getElementById("friendsPage");
+    const myCodePageEl = document.getElementById("myCodePage");
+    const writeCodePageEl = document.getElementById("writeCodePage");
+    const myCodeEl = document.getElementById("myCode");
+    const friendListEl = document.getElementById("friendList");
+    const friendCodeInputEl = document.getElementById("friendCodeInput");
+    const debugDataEl = document.getElementById("debugData");
+
+    if (!gl) {
+      document.body.innerHTML = "<div style='padding:24px;font:16px system-ui;color:white'>Bu tarayıcı WebGL açamadı.</div>";
+      throw new Error("WebGL not available");
+    }
+
+    const VERT = `
+      attribute vec3 aPos;
+      attribute vec3 aNormal;
+      uniform mat4 uProj;
+      uniform mat4 uView;
+      uniform mat4 uModel;
+      uniform vec3 uColor;
+      varying vec3 vColor;
+      void main() {
+        vec3 n = normalize((uModel * vec4(aNormal, 0.0)).xyz);
+        vec3 light = normalize(vec3(-0.45, 0.9, 0.35));
+        float diffuse = max(dot(n, light), 0.0);
+        float rim = max(dot(n, normalize(vec3(0.25, 0.25, 1.0))), 0.0) * 0.18;
+        vColor = uColor * (0.36 + diffuse * 0.66 + rim);
+        gl_Position = uProj * uView * uModel * vec4(aPos, 1.0);
+      }
+    `;
+    const FRAG = `precision mediump float; varying vec3 vColor; void main() { gl_FragColor = vec4(vColor, 1.0); }`;
+    const LINE_VERT = `attribute vec3 aPos; uniform mat4 uProj; uniform mat4 uView; uniform vec3 uColor; varying vec3 vColor; void main(){ vColor=uColor; gl_Position=uProj*uView*vec4(aPos,1.0); }`;
+    const LINE_FRAG = `precision mediump float; varying vec3 vColor; void main(){ gl_FragColor=vec4(vColor,1.0); }`;
+
+    const program = makeProgram(VERT, FRAG);
+    const lineProgram = makeProgram(LINE_VERT, LINE_FRAG);
+    const cube = createCube();
+    const cubePos = buffer(cube.positions);
+    const cubeNormal = buffer(cube.normals);
+    const lineBuffer = gl.createBuffer();
+
+    const loc = {
+      pos: gl.getAttribLocation(program, "aPos"),
+      normal: gl.getAttribLocation(program, "aNormal"),
+      proj: gl.getUniformLocation(program, "uProj"),
+      view: gl.getUniformLocation(program, "uView"),
+      model: gl.getUniformLocation(program, "uModel"),
+      color: gl.getUniformLocation(program, "uColor")
+    };
+    const lineLoc = {
+      pos: gl.getAttribLocation(lineProgram, "aPos"),
+      proj: gl.getUniformLocation(lineProgram, "uProj"),
+      view: gl.getUniformLocation(lineProgram, "uView"),
+      color: gl.getUniformLocation(lineProgram, "uColor")
+    };
+
+    const keys = new Set();
+    const state = {
+      startedAt: performance.now(),
+      checkpoint: { x: -40, y: 2.2, z: 0 },
+      won: false,
+      playing: false,
+      levelIndex: 0,
+      camera: { x: -45, y: 16, z: 22 },
+      focus: { x: -40, y: 5, z: 0 },
+      yaw: 2.15,
+      pitch: 0.48,
+      distance: 29,
+      assist: true,
+      dragging: false,
+      lastPointer: { x: 0, y: 0 }
+    };
+
+    const LEVELS = [
+      makeLevel("Kanyon Girisi", 0, [0, 1.3, -1.8, 1.2, 0, -2.2, 1.5, 0], [0, 2.2, 4.5, 7, 4.2, 6.6, 8.7, 5.2]),
+      makeLevel("Dalga Taslari", 1, [0, -2.8, 2.6, -3.1, 2.2, -1.6, 2.8, 0], [0, 1.8, 3.2, 2.4, 5.4, 7.6, 5.8, 3.5]),
+      makeLevel("Sis Koprusu", 2, [0, 2.1, 3.4, -1.9, -3.2, 0.8, 3.1, 0], [0, 3.1, 5.9, 8.4, 6.8, 9.4, 7.2, 4.1]),
+      makeLevel("Ters Ruzgar", 3, [0, -1.2, -3.4, 1.6, 3.8, 1.2, -2.4, 0], [0, 2.8, 2.1, 5.8, 8.1, 6.0, 8.8, 5.0]),
+      makeLevel("Mavi Yar", 4, [0, 3.5, 0.4, -3.6, -0.7, 3.1, -2.7, 0], [0, 2.0, 5.0, 3.8, 7.2, 10.0, 7.7, 4.8]),
+      makeLevel("Ip Sinavi", 5, [0, -3.5, 3.5, -3.5, 3.5, -2.8, 2.8, 0], [0, 2.6, 4.8, 7.6, 5.6, 8.4, 10.2, 6.2]),
+      makeLevel("Yukselen Yol", 6, [0, 0.8, -1.2, 1.8, -2.6, 2.2, -1.4, 0], [0, 2.4, 4.7, 7.0, 9.3, 11.2, 9.1, 6.4]),
+      makeLevel("Dar Bogaz", 7, [0, 3.8, 2.1, -2.1, -3.8, 1.5, 3.4, 0], [0, 3.0, 5.0, 6.4, 4.6, 7.8, 9.5, 6.0]),
+      makeLevel("Kirmizi Yarim", 8, [0, -2.5, -0.5, 2.9, 0.5, -3.1, 2.7, 0], [0, 1.6, 4.4, 6.8, 9.0, 6.2, 8.2, 4.6]),
+      makeLevel("Sessiz Atlama", 9, [0, 1.8, -2.8, 3.2, -1.8, 2.9, -3.3, 0], [0, 3.6, 6.2, 4.0, 7.0, 10.2, 8.4, 5.2]),
+      makeLevel("Cift Sirt", 10, [0, -3.2, 3.2, 1.4, -1.4, -3.4, 3.4, 0], [0, 2.2, 5.2, 7.8, 10.0, 7.4, 9.2, 6.0]),
+      makeLevel("Kopuk Taslar", 11, [0, 2.7, -3.7, 0.8, 3.5, -2.5, 1.5, 0], [0, 4.0, 6.8, 5.0, 8.8, 11.4, 8.0, 5.6]),
+      makeLevel("Deniz Ustu", 12, [0, -1.8, 2.4, -2.9, 3.6, -3.4, 2.2, 0], [0, 2.7, 4.0, 6.6, 9.6, 6.9, 10.4, 7.0]),
+      makeLevel("Kanyon Taclari", 13, [0, 3.2, -0.8, -3.4, 1.8, 3.7, -2.0, 0], [0, 3.4, 6.4, 9.2, 6.4, 8.8, 11.6, 7.2]),
+      makeLevel("Final Ip", 14, [0, -3.6, 3.6, -2.4, 2.4, -3.2, 3.2, 0], [0, 4.2, 7.0, 10.4, 7.8, 11.6, 9.4, 6.8])
+    ];
+    let platforms = [];
+    let hazards = [];
+    let checkpoints = [];
+    let levers = [];
+    let gates = [];
+    let finish = { x:80, y:4.4, z:0, w:8, h:5, d:8 };
+
+    const players = [
+      makePlayer("Mavi", "blue", [-42, 3.2, -1.6], [0.24, 0.68, 1.0], { left:"KeyA", right:"KeyD", forward:"KeyW", back:"KeyS", jump:"Space" }),
+      makePlayer("Pembe", "pink", [-38.8, 3.2, 1.6], [1.0, 0.32, 0.58], { left:"ArrowLeft", right:"ArrowRight", forward:"ArrowUp", back:"ArrowDown", jump:"Enter" })
+    ];
+    globalThis.gameDebug = {
+      players,
+      state,
+      levels: LEVELS,
+      loadLevel,
+      getLevelData: () => ({ platforms, hazards, checkpoints, finish, levers, gates })
+    };
+    const profile = loadProfile();
+    myCodeEl.textContent = profile.code;
+    renderFriends();
+    loadLevel(0, false);
+
+    function makePlayer(name, role, pos, color, controls) {
+      return { name, role, x:pos[0], y:pos[1], z:pos[2], px:pos[0], py:pos[1], pz:pos[2], vx:0, vy:0, vz:0, radius:.95, height:2.15, grounded:false, coyote:0, color, controls };
+    }
+
+    function makeLevel(name, index, zPath, yPath) {
+      const xs = [-40, -23, -7, 8, 23, 39, 57, 78];
+      const widths = [23, 12, 10.5, 10, 13, 10.5, 11, 18];
+      const depths = [13, 8.8, 7.4, 7.8, 8.8, 7.6, 8.2, 11];
+      const base = [
+        [.16, .25, .34],
+        [.18, .31, .42],
+        [.20, .30, .39],
+        [.18, .33, .38],
+        [.22, .29, .42]
+      ][index % 5];
+      const nodes = xs.map((x, i) => ({
+        x,
+        y: yPath[i],
+        z: zPath[i],
+        w: widths[i] - Math.min(index * .18, 1.6),
+        h: i === 0 || i === xs.length - 1 ? 2 : 1.6,
+        d: depths[i] - Math.min(index * .12, 1.2),
+        color: i === xs.length - 1 ? [.13, .35, .26] : base
+      }));
+      const levelHazards = [];
+      for (let i = 0; i < nodes.length - 1; i++) {
+        const a = nodes[i], b = nodes[i + 1];
+        const gapStart = a.x + a.w / 2;
+        const gapEnd = b.x - b.w / 2;
+        const gap = gapEnd - gapStart;
+        if (gap > 3.2) {
+          levelHazards.push({
+            x: (gapStart + gapEnd) / 2,
+            z: (a.z + b.z) / 2,
+            w: Math.max(1.8, gap - 2.2),
+            d: Math.max(6.2, Math.min(a.d, b.d) + 1.2)
+          });
+        }
+      }
+      const pinkBase = nodes[2];
+      const blueBase = nodes[5];
+      const coopPlatforms = [
+        { x: pinkBase.x, y: pinkBase.y + 1.25, z: pinkBase.z + 9.4, w: 8.2, h: 1.0, d: 5.2, color: [.55, .18, .35], only: "pink", coop: true },
+        { x: blueBase.x, y: blueBase.y + 1.25, z: blueBase.z - 9.4, w: 8.2, h: 1.0, d: 5.2, color: [.15, .38, .62], only: "blue", coop: true }
+      ];
+      const levelLevers = [
+        { id: "pinkLever", owner: "pink", opens: "blueGate", x: pinkBase.x, y: pinkBase.y + 2.1, z: pinkBase.z + 9.4, active: false },
+        { id: "blueLever", owner: "blue", opens: "pinkGate", x: blueBase.x, y: blueBase.y + 2.1, z: blueBase.z - 9.4, active: false }
+      ];
+      const levelGates = [
+        { id: "blueGate", only: "blue", active: false, x: (nodes[3].x + nodes[4].x) / 2, y: Math.min(nodes[3].y, nodes[4].y) + .2, z: (nodes[3].z + nodes[4].z) / 2 - 4.8, w: 7.2, h: .85, d: 4.6, color: [.2, .58, .95] },
+        { id: "pinkGate", only: "pink", active: false, x: (nodes[5].x + nodes[6].x) / 2, y: Math.min(nodes[5].y, nodes[6].y) + .2, z: (nodes[5].z + nodes[6].z) / 2 + 4.8, w: 7.2, h: .85, d: 4.6, color: [.98, .24, .55] }
+      ];
+      return { name, nodes, hazards: levelHazards, coopPlatforms, levers: levelLevers, gates: levelGates };
+    }
+
+    function loadLevel(index, announce = true) {
+      state.levelIndex = clamp(index, 0, LEVELS.length - 1);
+      const level = LEVELS[state.levelIndex];
+      platforms = [
+        ...level.nodes.map((node, i) => ({ ...node, finish: i === level.nodes.length - 1 })),
+        ...level.coopPlatforms.map((node) => ({ ...node }))
+      ];
+      hazards = level.hazards.map((hazard) => ({ ...hazard }));
+      levers = level.levers.map((lever) => ({ ...lever, active: false }));
+      gates = level.gates.map((gate) => ({ ...gate, active: false }));
+      const cpNodes = [2, 4, 6].map((i) => level.nodes[i]);
+      checkpoints = cpNodes.map((node) => ({ x: node.x, y: node.y + node.h / 2, z: node.z }));
+      const end = level.nodes[level.nodes.length - 1];
+      finish = { x: end.x, y: end.y + end.h / 2 + 1.4, z: end.z, w: end.w * .72, h: 5, d: end.d * .72 };
+      state.checkpoint = { x: level.nodes[0].x, y: level.nodes[0].y + level.nodes[0].h / 2, z: level.nodes[0].z };
+      state.won = false;
+      state.focus.x = state.checkpoint.x;
+      state.focus.y = state.checkpoint.y + 3;
+      state.focus.z = state.checkpoint.z;
+      respawn(announce ? `${state.levelIndex + 1}. bolum: ${level.name}` : "");
+      syncDebugData();
+    }
+
+    function syncDebugData() {
+      debugDataEl.textContent = JSON.stringify({
+        levelIndex: state.levelIndex,
+        levelCount: LEVELS.length,
+        levelName: LEVELS[state.levelIndex].name,
+        platforms,
+        hazards,
+        checkpoints,
+        finish,
+        levers,
+        gates,
+        players: players.map((p) => ({ x:p.x, y:p.y, z:p.z }))
+      });
+    }
+
+    function loadProfile() {
+      const code = String(Math.floor(10000 + Math.random() * 90000));
+      let friends = [];
+      try { friends = JSON.parse(sessionStorage.getItem("ipParkuruFriends") || "[]"); } catch { friends = []; }
+      return { code, friends: friends.filter((item) => /^\d{5}$/.test(item)) };
+    }
+
+    function saveFriends() {
+      sessionStorage.setItem("ipParkuruFriends", JSON.stringify(profile.friends));
+    }
+
+    function renderFriends() {
+      friendListEl.innerHTML = "";
+      if (!profile.friends.length) {
+        const empty = document.createElement("li");
+        empty.textContent = "Henuz lobiye katilan yok.";
+        friendListEl.appendChild(empty);
+        return;
+      }
+      profile.friends.forEach((code) => {
+        const item = document.createElement("li");
+        item.innerHTML = `<span>Lobi istegi</span><strong>${code}</strong>`;
+        friendListEl.appendChild(item);
+      });
+    }
+
+    function showMenuPage(page) {
+      mainMenuEl.classList.toggle("hidden", page !== "main");
+      settingsPageEl.classList.toggle("hidden", page !== "settings");
+      friendsPageEl.classList.toggle("hidden", page !== "friends");
+    }
+
+    function showFriendPage(page) {
+      myCodePageEl.classList.toggle("hidden", page !== "mine");
+      writeCodePageEl.classList.toggle("hidden", page !== "write");
+    }
+
+    document.getElementById("startBtn").addEventListener("click", startGame);
+    document.getElementById("settingsBtn").addEventListener("click", () => showMenuPage("settings"));
+    document.getElementById("friendsBtn").addEventListener("click", () => showMenuPage("friends"));
+    document.getElementById("settingsBackBtn").addEventListener("click", () => showMenuPage("main"));
+    document.getElementById("friendsBackBtn").addEventListener("click", () => showMenuPage("main"));
+    document.getElementById("myCodeBtn").addEventListener("click", () => showFriendPage("mine"));
+    document.getElementById("writeCodeBtn").addEventListener("click", () => showFriendPage("write"));
+    document.getElementById("assistBtn").addEventListener("click", () => {
+      state.assist = !state.assist;
+      document.getElementById("assistBtn").textContent = state.assist ? "Acik" : "Kapali";
+      showToast(state.assist ? "Pembe otomatik takip ediyor." : "Pembe manuel kontrolde.");
+    });
+    document.getElementById("distanceBtn").addEventListener("click", () => {
+      state.distance = state.distance === 29 ? 39 : state.distance === 39 ? 20 : 29;
+      document.getElementById("distanceBtn").textContent = state.distance === 39 ? "Uzak" : state.distance === 20 ? "Yakin" : "Normal";
+    });
+    document.getElementById("codeForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const code = friendCodeInputEl.value.replace(/\D/g, "").slice(0, 5);
+      friendCodeInputEl.value = code;
+      if (!/^\d{5}$/.test(code)) {
+        showToast("Kod 5 haneli olmali.");
+        return;
+      }
+      if (code === profile.code) {
+        showToast("Kendi lobi kodunu yazamazsin.");
+        return;
+      }
+      if (profile.friends.includes(code)) {
+        showToast("Bu lobi kodu zaten girildi.");
+        return;
+      }
+      profile.friends.push(code);
+      saveFriends();
+      renderFriends();
+      friendCodeInputEl.value = "";
+      state.assist = false;
+      document.getElementById("assistBtn").textContent = "Kapali";
+      showToast(`${code} kodlu lobiye katilma istegi hazir. Online baglanti icin sunucu gerekir.`);
+    });
+    friendCodeInputEl.addEventListener("input", () => {
+      friendCodeInputEl.value = friendCodeInputEl.value.replace(/\D/g, "").slice(0, 5);
+    });
+    addEventListener("hashchange", () => {
+      const match = location.hash.match(/level-(\d+)/);
+      if (match) loadLevel(Number(match[1]) - 1, false);
+    });
+
+    addEventListener("keydown", (event) => {
+      if (event.target === friendCodeInputEl) return;
+      if (!state.playing && !["KeyR", "KeyT"].includes(event.code)) return;
+      keys.add(event.code);
+      if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space","Enter"].includes(event.code)) event.preventDefault();
+      if (event.code === "KeyR") resetGame();
+      if (event.code === "KeyT") {
+        state.assist = !state.assist;
+        showToast(state.assist ? "Pembe otomatik takip ediyor." : "Pembe manuel kontrolde.");
+      }
+    });
+    addEventListener("keyup", (event) => keys.delete(event.code));
+    addEventListener("resize", resize);
+    canvas.addEventListener("pointerdown", (event) => {
+      if (!state.playing) return;
+      canvas.focus();
+      state.dragging = true;
+      state.lastPointer.x = event.clientX;
+      state.lastPointer.y = event.clientY;
+      canvas.setPointerCapture(event.pointerId);
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      if (!state.dragging) return;
+      const dx = event.clientX - state.lastPointer.x;
+      const dy = event.clientY - state.lastPointer.y;
+      state.lastPointer.x = event.clientX;
+      state.lastPointer.y = event.clientY;
+      state.yaw -= dx * 0.008;
+      state.pitch = clamp(state.pitch + dy * 0.006, 0.18, 1.12);
+    });
+    canvas.addEventListener("pointerup", (event) => {
+      state.dragging = false;
+      canvas.releasePointerCapture(event.pointerId);
+    });
+    canvas.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      state.distance = clamp(state.distance + event.deltaY * 0.018, 15, 48);
+    }, { passive: false });
+    resize();
+
+    let toastTimer = 0;
+    let last = performance.now();
+    requestAnimationFrame(loop);
+
+    function loop(now) {
+      const dt = Math.min((now - last) / 1000, 1 / 30);
+      last = now;
+      if (state.playing) update(dt, now);
+      else updateCamera(dt);
+      render(now);
+      requestAnimationFrame(loop);
+    }
+
+    function startGame() {
+      menuEl.classList.add("hidden");
+      state.playing = true;
+      state.startedAt = performance.now();
+      canvas.focus();
+      showToast("Oyun basladi.");
+    }
+
+    function update(dt, now) {
+      const forward = [1, 0];
+      const right = [0, 1];
+      for (let i = 0; i < players.length; i++) {
+        const p = players[i];
+        p.px = p.x; p.py = p.y; p.pz = p.z;
+        const c = p.controls;
+        const rightInput = (keys.has(c.right) ? 1 : 0) - (keys.has(c.left) ? 1 : 0);
+        const forwardInput = (keys.has(c.forward) ? 1 : 0) - (keys.has(c.back) ? 1 : 0);
+        const manualInput = rightInput !== 0 || forwardInput !== 0 || keys.has(c.jump);
+        let ix = right[0] * rightInput + forward[0] * forwardInput;
+        let iz = right[1] * rightInput + forward[1] * forwardInput;
+
+        if (i === 1 && state.assist && !manualInput) {
+          const lead = players[0];
+          const targetX = lead.x - forward[0] * 2.2 + right[0] * 2.2;
+          const targetZ = lead.z - forward[1] * 2.2 + right[1] * 2.2;
+          const dx = targetX - p.x;
+          const dz = targetZ - p.z;
+          const gap = Math.hypot(dx, dz);
+          if (gap > 1.1) {
+            ix = dx / gap;
+            iz = dz / gap;
+          }
+          if (lead.y - p.y > 1.2 && p.coyote > 0) p.vy = 13.6;
+        }
+
+        const len = Math.hypot(ix, iz) || 1;
+        const accel = p.grounded ? 54 : 32;
+        p.vx += (ix / len) * accel * dt;
+        p.vz += (iz / len) * accel * dt;
+        p.vx = clamp(p.vx, -13.5, 13.5);
+        p.vz = clamp(p.vz, -13.5, 13.5);
+        p.vy -= 28 * dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+        p.coyote = p.grounded ? .12 : Math.max(0, p.coyote - dt);
+        p.grounded = false;
+        collidePlayer(p);
+        if (keys.has(c.jump) && p.coyote > 0) {
+          p.vy = 14.2;
+          p.coyote = 0;
+          p.grounded = false;
+        }
+        const damp = p.grounded ? .88 : .992;
+        p.vx *= damp;
+        p.vz *= damp;
+      }
+
+      applyRope(dt);
+      updateLevers();
+      syncDebugData();
+      checkProgress();
+      updateCamera(dt);
+      updateHud(now);
+    }
+
+    function collidePlayer(p) {
+      for (const box of [...platforms, ...gates.filter((gate) => gate.active)]) {
+        if (box.only && box.only !== p.role) continue;
+        const top = box.y + box.h / 2;
+        const minX = box.x - box.w / 2 - p.radius;
+        const maxX = box.x + box.w / 2 + p.radius;
+        const minZ = box.z - box.d / 2 - p.radius;
+        const maxZ = box.z + box.d / 2 + p.radius;
+        const insideXZ = p.x > minX && p.x < maxX && p.z > minZ && p.z < maxZ;
+        if (insideXZ && p.py >= top && p.y <= top + .2 && p.vy <= 0) {
+          p.y = top;
+          p.vy = 0;
+          p.grounded = true;
+        } else if (insideXZ && p.y < top && p.y > box.y - box.h / 2) {
+          const dx = Math.min(Math.abs(p.x - minX), Math.abs(maxX - p.x));
+          const dz = Math.min(Math.abs(p.z - minZ), Math.abs(maxZ - p.z));
+          if (dx < dz) p.x = p.x < box.x ? minX : maxX;
+          else p.z = p.z < box.z ? minZ : maxZ;
+        }
+      }
+    }
+
+    function updateLevers() {
+      for (const lever of levers) {
+        const player = players.find((p) => p.role === lever.owner);
+        lever.active = Math.hypot(player.x - lever.x, player.z - lever.z) < 2.4 && Math.abs(player.y - lever.y) < 3.2;
+        const gate = gates.find((item) => item.id === lever.opens);
+        if (gate) gate.active = lever.active;
+      }
+    }
+
+    function applyRope(dt) {
+      const a = players[0], b = players[1];
+      const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+      const dist = Math.hypot(dx, dy, dz) || 1;
+      const max = 7.4;
+      if (dist > max) {
+        for (const p of players) {
+          p.x = p.px;
+          p.y = p.py;
+          p.z = p.pz;
+          p.vx = 0;
+          p.vz = 0;
+          p.vy = Math.min(0, p.vy);
+        }
+        showToast("Ip daha fazla uzamaz.");
+      }
+    }
+
+    function checkProgress() {
+      if (players.some((p) => p.y < -8 || hazards.some((h) => Math.abs(p.x - h.x) < h.w / 2 && Math.abs(p.z - h.z) < h.d / 2 && p.y < -0.6))) {
+        respawn("Düştünüz, checkpoint'e döndünüz.");
+        return;
+      }
+      checkpoints.forEach((cp) => {
+        const close = players.every((p) => Math.hypot(p.x - cp.x, p.z - cp.z) < 6 && Math.abs(p.y - cp.y) < 4);
+        if (close && cp.x > state.checkpoint.x) {
+          state.checkpoint = { x:cp.x, y:cp.y, z:cp.z };
+          showToast("Checkpoint alındı.");
+        }
+      });
+      const done = players.every((p) => Math.abs(p.x - finish.x) < finish.w / 2 && Math.abs(p.z - finish.z) < finish.d / 2 && Math.abs(p.y - finish.y) < finish.h);
+      if (done && !state.won) {
+        if (state.levelIndex < LEVELS.length - 1) {
+          loadLevel(state.levelIndex + 1);
+        } else {
+          state.won = true;
+          showToast("Final! 15 bolumu ip kopmadan tamamladiniz.");
+        }
+      }
+    }
+
+    function updateCamera(dt) {
+      const mx = (players[0].x + players[1].x) / 2;
+      const my = (players[0].y + players[1].y) / 2;
+      const mz = (players[0].z + players[1].z) / 2;
+      const follow = Math.min(1, dt * 4);
+      state.focus.x += (mx + 3 - state.focus.x) * follow;
+      state.focus.y += (my + 2.6 - state.focus.y) * follow;
+      state.focus.z += (mz - state.focus.z) * follow;
+      const flat = Math.cos(state.pitch) * state.distance;
+      state.camera.x = state.focus.x + Math.cos(state.yaw) * flat;
+      state.camera.y = state.focus.y + Math.sin(state.pitch) * state.distance;
+      state.camera.z = state.focus.z + Math.sin(state.yaw) * flat;
+    }
+
+    function render(now) {
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.clearColor(.035, .063, .11, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.enable(gl.DEPTH_TEST);
+      gl.enable(gl.CULL_FACE);
+      const aspect = canvas.width / canvas.height;
+      const proj = perspective(Math.PI / 3.2, aspect, .1, 260);
+      const target = [state.focus.x, state.focus.y, state.focus.z];
+      const view = lookAt([state.camera.x, state.camera.y, state.camera.z], target, [0, 1, 0]);
+
+      drawSkyFloor(proj, view);
+      hazards.forEach((h) => drawBox(proj, view, [h.x, -1.15, h.z], [h.w, .35, h.d], [.34, .08, .17]));
+      hazards.forEach((h) => drawSpikes(proj, view, h, now));
+      platforms.forEach((p) => drawBox(proj, view, [p.x, p.y, p.z], [p.w, p.h, p.d], p.color));
+      gates.forEach((gate) => drawGate(proj, view, gate, now));
+      levers.forEach((lever) => drawLever(proj, view, lever, now));
+      checkpoints.forEach((cp, i) => drawCheckpoint(proj, view, cp, i));
+      drawFinish(proj, view, now);
+      drawRope(proj, view, now);
+      players.forEach((p) => drawPlayer(proj, view, p, now));
+    }
+
+    function drawSkyFloor(proj, view) {
+      drawBox(proj, view, [20, -10.2, 0], [170, .22, 72], [.03, .25, .36]);
+      for (let x = -58; x <= 96; x += 7) {
+        const shade = .18 + ((x + 70) % 18) * .004;
+        drawBox(proj, view, [x, -9.95, -8 + Math.sin(x * .2) * 4], [4.2, .08, .18], [.06, shade, .48]);
+        drawBox(proj, view, [x + 2, -9.93, 11 + Math.cos(x * .17) * 4], [4.8, .08, .16], [.08, .32, .54]);
+      }
+      for (let x = -52; x <= 98; x += 10) {
+        const leftHeight = 21 + Math.sin(x * .13) * 4;
+        const rightHeight = 24 + Math.cos(x * .11) * 4;
+        drawBox(proj, view, [x, leftHeight / 2 - 7, -25], [12, leftHeight, 5.5], [.34, .25, .2]);
+        drawBox(proj, view, [x + 3, rightHeight / 2 - 8, 25], [12, rightHeight, 5.5], [.27, .29, .24]);
+        drawBox(proj, view, [x + 1, 2.5, -19.5], [7, 11, 3.8], [.42, .32, .25]);
+        drawBox(proj, view, [x - 2, 1.5, 19.8], [7, 10, 3.8], [.37, .35, .29]);
+      }
+    }
+
+    function drawPlayer(proj, view, p, now) {
+      const bob = p.grounded ? Math.sin(now * .01 + p.x) * .08 : 0;
+      drawBox(proj, view, [p.x, p.y + 1.05 + bob, p.z], [1.35, 2.1, 1.05], p.color);
+      drawBox(proj, view, [p.x, p.y + 2.55 + bob, p.z], [1.15, 1.05, 1.05], [Math.min(1, p.color[0] + .22), Math.min(1, p.color[1] + .22), Math.min(1, p.color[2] + .22)]);
+      drawBox(proj, view, [p.x - .25, p.y + 2.62 + bob, p.z + .56], [.18, .18, .08], [.02, .04, .07]);
+      drawBox(proj, view, [p.x + .25, p.y + 2.62 + bob, p.z + .56], [.18, .18, .08], [.02, .04, .07]);
+    }
+
+    function drawRope(proj, view, now) {
+      const a = players[0], b = players[1];
+      const points = [];
+      const dist = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+      for (let i = 0; i <= 18; i++) {
+        const t = i / 18;
+        const sag = Math.sin(Math.PI * t) * Math.max(.15, .65 - dist * .035 + Math.sin(now * .004) * .05);
+        points.push(
+          lerp(a.x, b.x, t),
+          lerp(a.y + 1.8, b.y + 1.8, t) - sag,
+          lerp(a.z, b.z, t)
+        );
+      }
+      gl.useProgram(lineProgram);
+      gl.uniformMatrix4fv(lineLoc.proj, false, proj);
+      gl.uniformMatrix4fv(lineLoc.view, false, view);
+      gl.uniform3fv(lineLoc.color, [1.0, .78, .28]);
+      gl.bindBuffer(gl.ARRAY_BUFFER, lineBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(points), gl.DYNAMIC_DRAW);
+      gl.enableVertexAttribArray(lineLoc.pos);
+      gl.vertexAttribPointer(lineLoc.pos, 3, gl.FLOAT, false, 0, 0);
+      gl.lineWidth(4);
+      gl.drawArrays(gl.LINE_STRIP, 0, points.length / 3);
+    }
+
+    function drawSpikes(proj, view, h, now) {
+      for (let x = h.x - h.w / 2 + 1; x < h.x + h.w / 2; x += 1.6) {
+        drawBox(proj, view, [x, .25 + Math.sin(now * .006 + x) * .05, h.z], [.75, 1.4, .75], [1, .29, .52]);
+      }
+    }
+
+    function drawCheckpoint(proj, view, cp, i) {
+      const active = state.checkpoint.x >= cp.x;
+      const color = active ? [.45, .95, .55] : [.58, .66, .74];
+      drawBox(proj, view, [cp.x, cp.y + 2.3, cp.z - 2.9], [.25, 4.8, .25], color);
+      drawBox(proj, view, [cp.x + .9, cp.y + 4.15, cp.z - 2.9], [1.8, 1, .18], color);
+    }
+
+    function drawLever(proj, view, lever, now) {
+      const color = lever.owner === "pink" ? [.98, .24, .55] : [.2, .58, .95];
+      const glow = lever.active ? 1 : .55 + Math.sin(now * .006) * .1;
+      drawBox(proj, view, [lever.x, lever.y - .55, lever.z], [2.2, .35, 2.2], [color[0] * .45, color[1] * .45, color[2] * .45]);
+      drawBox(proj, view, [lever.x, lever.y + .05, lever.z], [1.1, .7, 1.1], color.map((v) => Math.min(1, v * glow + .12)));
+      drawBox(proj, view, [lever.x, lever.y + .9, lever.z], [.25, 1.2, .25], color);
+    }
+
+    function drawGate(proj, view, gate, now) {
+      const pulse = gate.active ? .2 + Math.sin(now * .01) * .04 : 0;
+      const color = gate.active ? gate.color : gate.color.map((v) => v * .28);
+      drawBox(proj, view, [gate.x, gate.y - (gate.active ? 0 : .7), gate.z], [gate.w, gate.h + pulse, gate.d], color);
+      if (!gate.active) {
+        drawBox(proj, view, [gate.x, gate.y + 1.2, gate.z], [gate.w, .25, .25], [.18, .08, .09]);
+      }
+    }
+
+    function drawFinish(proj, view, now) {
+      drawBox(proj, view, [finish.x, finish.y + 2.2, finish.z - 4], [.35, 5.2, .35], [.8, .92, .96]);
+      for (let i = 0; i < 4; i++) {
+        const c = i % 2 ? [.05, .07, .1] : [.95, .98, 1];
+        drawBox(proj, view, [finish.x + 1.1 + i * .8, finish.y + 4.3 + Math.sin(now * .005 + i) * .12, finish.z - 4], [.8, .55, .18], c);
+      }
+    }
+
+    function drawBox(proj, view, pos, scale, color) {
+      const model = multiply(translate(pos[0], pos[1], pos[2]), scaleM(scale[0], scale[1], scale[2]));
+      gl.useProgram(program);
+      gl.uniformMatrix4fv(loc.proj, false, proj);
+      gl.uniformMatrix4fv(loc.view, false, view);
+      gl.uniformMatrix4fv(loc.model, false, model);
+      gl.uniform3fv(loc.color, color);
+      gl.bindBuffer(gl.ARRAY_BUFFER, cubePos);
+      gl.enableVertexAttribArray(loc.pos);
+      gl.vertexAttribPointer(loc.pos, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, cubeNormal);
+      gl.enableVertexAttribArray(loc.normal);
+      gl.vertexAttribPointer(loc.normal, 3, gl.FLOAT, false, 0, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 36);
+    }
+
+    function resetGame() {
+      state.startedAt = performance.now();
+      loadLevel(state.levelIndex);
+    }
+
+    function respawn(message) {
+      players[0].x = state.checkpoint.x - 1.6; players[0].y = state.checkpoint.y; players[0].z = state.checkpoint.z - 1.2;
+      players[1].x = state.checkpoint.x + 1.6; players[1].y = state.checkpoint.y; players[1].z = state.checkpoint.z + 1.2;
+      players.forEach((p) => { p.vx = 0; p.vy = 0; p.vz = 0; p.grounded = false; });
+      if (message) showToast(message);
+    }
+
+    function updateHud(now) {
+      const elapsed = Math.max(0, now - state.startedAt);
+      const m = Math.floor(elapsed / 60000);
+      const s = Math.floor((elapsed % 60000) / 1000);
+      const t = Math.floor((elapsed % 1000) / 100);
+      timerEl.textContent = `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}.${t}`;
+      const cp = checkpoints.filter((c) => c.x <= state.checkpoint.x).length;
+      statusEl.textContent = state.won ? "Tum bolumler bitti" : `Bolum ${state.levelIndex + 1}/15 - CP ${cp}/3`;
+      timerEl.textContent += state.assist ? " | takip açık" : " | manuel";
+    }
+
+    function showToast(text) {
+      toastEl.textContent = text;
+      toastEl.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1500);
+    }
+
+    function resize() {
+      const ratio = Math.max(1, Math.min(devicePixelRatio || 1, 2));
+      canvas.width = Math.floor(innerWidth * ratio);
+      canvas.height = Math.floor(innerHeight * ratio);
+    }
+
+    function makeProgram(vs, fs) {
+      const p = gl.createProgram();
+      gl.attachShader(p, shader(gl.VERTEX_SHADER, vs));
+      gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fs));
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+      return p;
+    }
+
+    function shader(type, source) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, source);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+      return s;
+    }
+
+    function buffer(data) {
+      const b = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, b);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
+      return b;
+    }
+
+    function createCube() {
+      const p = [
+        -0.5,-0.5,0.5, 0.5,-0.5,0.5, 0.5,0.5,0.5, -0.5,-0.5,0.5, 0.5,0.5,0.5, -0.5,0.5,0.5,
+        0.5,-0.5,-0.5, -0.5,-0.5,-0.5, -0.5,0.5,-0.5, 0.5,-0.5,-0.5, -0.5,0.5,-0.5, 0.5,0.5,-0.5,
+        -0.5,0.5,0.5, 0.5,0.5,0.5, 0.5,0.5,-0.5, -0.5,0.5,0.5, 0.5,0.5,-0.5, -0.5,0.5,-0.5,
+        -0.5,-0.5,-0.5, 0.5,-0.5,-0.5, 0.5,-0.5,0.5, -0.5,-0.5,-0.5, 0.5,-0.5,0.5, -0.5,-0.5,0.5,
+        0.5,-0.5,0.5, 0.5,-0.5,-0.5, 0.5,0.5,-0.5, 0.5,-0.5,0.5, 0.5,0.5,-0.5, 0.5,0.5,0.5,
+        -0.5,-0.5,-0.5, -0.5,-0.5,0.5, -0.5,0.5,0.5, -0.5,-0.5,-0.5, -0.5,0.5,0.5, -0.5,0.5,-0.5
+      ];
+      const faces = [[0,0,1],[0,0,-1],[0,1,0],[0,-1,0],[1,0,0],[-1,0,0]];
+      const n = [];
+      for (const f of faces) for (let i = 0; i < 6; i++) n.push(...f);
+      return { positions:p, normals:n };
+    }
+
+    function perspective(fov, aspect, near, far) {
+      const f = 1 / Math.tan(fov / 2), nf = 1 / (near - far);
+      return new Float32Array([f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,2*far*near*nf,0]);
+    }
+
+    function lookAt(eye, center, up) {
+      const z = norm([eye[0]-center[0], eye[1]-center[1], eye[2]-center[2]]);
+      const x = norm(cross(up, z));
+      const y = cross(z, x);
+      return new Float32Array([x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0, -dot(x,eye),-dot(y,eye),-dot(z,eye),1]);
+    }
+
+    function translate(x, y, z) { return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, x,y,z,1]); }
+    function scaleM(x, y, z) { return new Float32Array([x,0,0,0, 0,y,0,0, 0,0,z,0, 0,0,0,1]); }
+    function multiply(a, b) {
+      const o = new Float32Array(16);
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) o[c*4+r] = a[r]*b[c*4] + a[4+r]*b[c*4+1] + a[8+r]*b[c*4+2] + a[12+r]*b[c*4+3];
+      return o;
+    }
+    function cross(a,b){ return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+    function dot(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+    function norm(v){ const l = Math.hypot(v[0],v[1],v[2]) || 1; return [v[0]/l,v[1]/l,v[2]/l]; }
+    function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+    function lerp(a,b,t){ return a + (b - a) * t; }
+  </script>
+</body>
+</html>
